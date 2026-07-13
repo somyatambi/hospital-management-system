@@ -1,0 +1,631 @@
+openapi: 3.0.0
+info:
+  title: Hospital Management System API
+  version: 1.0.0
+  description: REST API for the Hospital Management System (MAD-2 Project)
+
+servers:
+  - url: http://localhost:5000/api
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    LoginRequest:
+      type: object
+      properties:
+        username: { type: string }
+        password: { type: string }
+
+    RegisterRequest:
+      type: object
+      properties:
+        username: { type: string }
+        email: { type: string }
+        password: { type: string }
+        name: { type: string }
+        phone: { type: string }
+
+    ChangePasswordRequest:
+      type: object
+      properties:
+        current_password: { type: string }
+        new_password: { type: string }
+
+    Department:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        description: { type: string }
+        doctors_count: { type: integer }
+
+    DoctorProfile:
+      type: object
+      properties:
+        id: { type: integer }
+        user_id: { type: integer }
+        name: { type: string }
+        specialization: { type: string }
+        department_id: { type: integer }
+        department_name: { type: string }
+        phone: { type: string }
+        qualification: { type: string }
+        experience_years: { type: integer }
+        consultation_fee: { type: number }
+        bio: { type: string }
+
+    PatientProfile:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        phone: { type: string }
+        date_of_birth: { type: string, format: date }
+        gender: { type: string }
+        blood_group: { type: string }
+        address: { type: string }
+        emergency_contact: { type: string }
+        medical_history: { type: string }
+
+    Appointment:
+      type: object
+      properties:
+        id: { type: integer }
+        patient_id: { type: integer }
+        patient_name: { type: string }
+        doctor_id: { type: integer }
+        doctor_name: { type: string }
+        date: { type: string, format: date }
+        time: { type: string }
+        status: { type: string, enum: [Booked, Completed, Cancelled] }
+        reason: { type: string }
+
+    Treatment:
+      type: object
+      properties:
+        id: { type: integer }
+        appointment_id: { type: integer }
+        diagnosis: { type: string }
+        prescription: { type: string }
+        doctor_notes: { type: string }
+        next_visit_date: { type: string, format: date }
+
+    Availability:
+      type: object
+      properties:
+        id: { type: integer }
+        doctor_id: { type: integer }
+        date: { type: string, format: date }
+        start_time: { type: string }
+        end_time: { type: string }
+        is_available: { type: boolean }
+
+# =============================================================================
+# AUTH ROUTES
+# =============================================================================
+paths:
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Register a new patient account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RegisterRequest' }
+      responses:
+        '201': { description: Account created successfully }
+        '400': { description: Validation error or username already exists }
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Authenticate user and return JWT access token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginRequest' }
+      responses:
+        '200': { description: Login successful, returns access_token and role }
+        '401': { description: Invalid credentials }
+
+  /auth/me:
+    get:
+      tags: [Auth]
+      summary: Get current logged-in user details
+      security: [{ BearerAuth: [] }]
+      responses:
+        '200': { description: Returns user object with profile }
+        '401': { description: Missing or invalid token }
+
+  /auth/change-password:
+    put:
+      tags: [Auth]
+      summary: Change password after verifying current password
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ChangePasswordRequest' }
+      responses:
+        '200': { description: Password changed successfully }
+        '400': { description: Incorrect current password }
+
+# =============================================================================
+# ADMIN ROUTES
+# =============================================================================
+  /admin/dashboard:
+    get:
+      tags: [Admin]
+      summary: Get system summary - total doctors, patients, appointments
+      security: [{ BearerAuth: [] }]
+      responses:
+        '200': { description: Dashboard statistics }
+
+  /admin/departments:
+    get:
+      tags: [Admin]
+      summary: List all departments (Redis cached)
+      security: [{ BearerAuth: [] }]
+      responses:
+        '200': { description: List of departments }
+    post:
+      tags: [Admin]
+      summary: Add a new department
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                description: { type: string }
+      responses:
+        '201': { description: Department created }
+
+  /admin/departments/{dept_id}:
+    put:
+      tags: [Admin]
+      summary: Edit a department
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - name: dept_id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200': { description: Department updated }
+    delete:
+      tags: [Admin]
+      summary: Delete a department
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - name: dept_id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200': { description: Department deleted }
+
+  /admin/doctors:
+    get:
+      tags: [Admin]
+      summary: List all doctors with optional search
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - name: search
+          in: query
+          schema: { type: string }
+      responses:
+        '200': { description: List of doctors }
+    post:
+      tags: [Admin]
+      summary: Create a new doctor account with profile
+      security: [{ BearerAuth: [] }]
+      responses:
+        '201': { description: Doctor created }
+
+  /admin/doctors/{doctor_id}:
+    put:
+      tags: [Admin]
+      summary: Edit doctor profile
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - name: doctor_id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200': { description: Doctor updated }
+    delete:
+      tags: [Admin]
+      summary: Deactivate (soft-delete) a doctor
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - name: doctor_id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200': { description: Doctor deactivated }
+
+  /admin/doctors/{doctor_id}/activate:
+    put:
+      tags: [Admin]
+      summary: Reactivate a deactivated doctor
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - name: doctor_id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200': { description: Doctor reactivated }
+
+  /admin/patients:
+    get:
+      tags: [Admin]
+      summary: List all patients with optional search
+      security: [{ BearerAuth: [] }]
+      responses:
+        '200': { description: List of patients }
+
+  /admin/patients/{patient_id}:
+    get:
+      tags: [Admin]
+      summary: View a specific patient's full profile
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - name: patient_id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200': { description: Patient details }
+    put:
+      tags: [Admin]
+      summary: Edit patient details
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - name: patient_id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200': { description: Patient updated }
+
+  /admin/patients/{patient_id}/deactivate:
+    put:
+      tags: [Admin]
+      summary: Deactivate a patient account
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - name: patient_id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200': { description: Patient deactivated }
+
+  /admin/patients/{patient_id}/activate:
+    put:
+      tags: [Admin]
+      summary: Reactivate a patient account
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - name: patient_id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200': { description: Patient activated }
+
+  /admin/appointments:
+    get:
+      tags: [Admin]
+      summary: List all appointments with optional status filter
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - name: status
+          in: query
+          schema: { type: string, enum: [Booked, Completed, Cancelled] }
+      responses:
+        '200': { description: List of appointments }
+
+# =============================================================================
+# DOCTOR ROUTES
+# =============================================================================
+  /doctor/dashboard:
+    get:
+      tags: [Doctor]
+      summary: Get today's appointments and total patient count
+      security: [{ BearerAuth: [] }]
+      responses:
+        '200': { description: Doctor dashboard data }
+
+  /doctor/profile:
+    get:
+      tags: [Doctor]
+      summary: Get own doctor profile
+      security: [{ BearerAuth: [] }]
+      responses:
+        '200': { description: Doctor profile }
+    put:
+      tags: [Doctor]
+      summary: Update own doctor profile
+      security: [{ BearerAuth: [] }]
+      responses:
+        '200': { description: Profile updated }
+
+  /doctor/appointments:
+    get:
+      tags: [Doctor]
+      summary: List own appointments with date and status filter
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - name: status
+          in: query
+          schema: { type: string }
+        - name: date
+          in: query
+          schema: { type: string, format: date }
+      responses:
+        '200': { description: List of appointments }
+
+  /doctor/appointments/{appt_id}/complete:
+    put:
+      tags: [Doctor]
+      summary: Mark appointment as Completed and save treatment record
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - name: appt_id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                diagnosis: { type: string }
+                prescription: { type: string }
+                doctor_notes: { type: string }
+                next_visit_date: { type: string, format: date }
+      responses:
+        '200': { description: Appointment completed and treatment saved }
+
+  /doctor/appointments/{appt_id}/cancel:
+    put:
+      tags: [Doctor]
+      summary: Cancel an appointment
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - name: appt_id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200': { description: Appointment cancelled }
+
+  /doctor/patients/{patient_id}/history:
+    get:
+      tags: [Doctor]
+      summary: View full appointment history of a patient
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - name: patient_id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200': { description: Patient appointment history }
+
+  /doctor/patients/{patient_id}/treatment:
+    get:
+      tags: [Doctor]
+      summary: View treatment records of a patient
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - name: patient_id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200': { description: Patient treatment records }
+
+  /doctor/availability:
+    get:
+      tags: [Doctor]
+      summary: List own availability windows
+      security: [{ BearerAuth: [] }]
+      responses:
+        '200': { description: List of availability slots }
+    post:
+      tags: [Doctor]
+      summary: Add a new availability date and time window
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                date: { type: string, format: date }
+                start_time: { type: string }
+                end_time: { type: string }
+      responses:
+        '201': { description: Availability added }
+
+  /doctor/availability/{av_id}:
+    delete:
+      tags: [Doctor]
+      summary: Remove an availability slot
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - name: av_id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200': { description: Availability deleted }
+
+# =============================================================================
+# PATIENT ROUTES
+# =============================================================================
+  /patient/dashboard:
+    get:
+      tags: [Patient]
+      summary: Get upcoming appointments and department list
+      security: [{ BearerAuth: [] }]
+      responses:
+        '200': { description: Patient dashboard data }
+
+  /patient/profile:
+    get:
+      tags: [Patient]
+      summary: Get own patient profile
+      security: [{ BearerAuth: [] }]
+      responses:
+        '200': { description: Patient profile }
+    put:
+      tags: [Patient]
+      summary: Update personal details
+      security: [{ BearerAuth: [] }]
+      responses:
+        '200': { description: Profile updated }
+
+  /patient/doctors:
+    get:
+      tags: [Patient]
+      summary: Browse doctors with search, department, and specialization filter
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - name: search
+          in: query
+          schema: { type: string }
+        - name: department_id
+          in: query
+          schema: { type: integer }
+        - name: specialization
+          in: query
+          schema: { type: string }
+      responses:
+        '200': { description: List of doctors }
+
+  /patient/doctors/{doctor_id}:
+    get:
+      tags: [Patient]
+      summary: Get doctor details with 30-minute availability slots (booked/free)
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - name: doctor_id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200': { description: Doctor details and slot list }
+
+  /patient/departments:
+    get:
+      tags: [Patient]
+      summary: List all departments
+      security: [{ BearerAuth: [] }]
+      responses:
+        '200': { description: List of departments }
+
+  /patient/appointments:
+    get:
+      tags: [Patient]
+      summary: List own appointments with status filter
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - name: status
+          in: query
+          schema: { type: string }
+      responses:
+        '200': { description: List of appointments }
+    post:
+      tags: [Patient]
+      summary: Book a new appointment (double-booking prevention enforced)
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                doctor_id: { type: integer }
+                date: { type: string, format: date }
+                time: { type: string }
+                reason: { type: string }
+      responses:
+        '201': { description: Appointment booked }
+        '400': { description: Slot already booked }
+
+  /patient/appointments/{appt_id}/reschedule:
+    put:
+      tags: [Patient]
+      summary: Reschedule an existing appointment to a new slot
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - name: appt_id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200': { description: Appointment rescheduled }
+
+  /patient/appointments/{appt_id}/cancel:
+    put:
+      tags: [Patient]
+      summary: Cancel own appointment
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - name: appt_id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200': { description: Appointment cancelled }
+
+  /patient/treatments:
+    get:
+      tags: [Patient]
+      summary: View all personal treatment records
+      security: [{ BearerAuth: [] }]
+      responses:
+        '200': { description: List of treatments }
+
+  /patient/export-treatments:
+    post:
+      tags: [Patient]
+      summary: Trigger Celery background task to export treatments as CSV
+      security: [{ BearerAuth: [] }]
+      responses:
+        '200': { description: Task queued, returns task_id }
+
+  /patient/export-status/{task_id}:
+    get:
+      tags: [Patient]
+      summary: Poll the status of the CSV export Celery task
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - name: task_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Returns status (pending / completed / failed) }
