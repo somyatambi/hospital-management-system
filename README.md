@@ -1,4 +1,4 @@
-# Hospital Management System V2 (MAD-II)
+# Hospital Management System 
 
 A full-stack Hospital Management System built as part of the **Modern Application Development II** course at IIT Madras.
 
