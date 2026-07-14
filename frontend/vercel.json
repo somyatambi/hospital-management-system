@@ -1,0 +1,13 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "https://hospital-management-system.onrender.com/api/:path*"
+    },
+    {
+      "source": "/exports/:path*",
+      "destination": "https://hospital-management-system.onrender.com/exports/:path*"
+    }
+  ]
+}
